@@ -1,0 +1,60 @@
+# docker-compose.scale.yml - ЛР4, масштабирование app, grekov
+services:
+  db:
+    image: postgres:15
+    container_name: grekov-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - grekov-pgdata:/var/lib/postgresql/data
+    networks:
+      - grekov-backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: grekov-redis
+    networks:
+      - grekov-backend
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  app:
+    build: .
+    image: grekov-assistant:v4
+    # container_name убран для масштабирования!
+    ports:
+      - "${APP_PORT}"   # порт в контейнере = APP_PORT, хостовый порт назначит Docker
+    environment:
+      APP_OWNER: ${APP_OWNER}
+      APP_SECRET: ${APP_SECRET}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+      CACHE_TTL: ${CACHE_TTL}
+    volumes:
+      - ./config:/app/config:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - grekov-backend
+
+volumes:
+  grekov-pgdata:
+    name: grekov-pgdata
+
+networks:
+  grekov-backend:
+    name: grekov-backend
+    driver: bridge
